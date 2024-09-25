@@ -151,18 +151,138 @@ void CPU::SUBHL(uint8_t& r1, uint8_t& r2)
 
 void CPU::SUBI(uint8_t& r1, uint8_t& r2)
 {
-	/*
-	* n = read_memory(addr=PC); PC = PC + 1
- result, carry_per_bit = A - n
- A = result
- flags.Z = 1 if result == 0 else 0
- flags.N = 1
- flags.H = 1 if carry_per_bit[3] else 0
- flags.C = 1 if carry_per_bit[7] else 0
-	*/
+	uint8_t  n = read(PC++);
+	uint8_t result = this->A - n, carry_per_bit = this->A - n;
 
+	A = result;
 
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
 
+void CPU::SUBC(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t result = this->A - r2 - (this->F & 0b00010000), carry_per_bit = this->A - r2 - (this->F & 0b00010000);
+
+	this->A = result;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::SUBCHL(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t data = read((this->H << 4) + this->L);
+
+	uint8_t result = this->A - data - (this->F & 0b00010000), carry_per_bit = this->A - data - (this->F & 0b00010000);
+
+	this->A = result;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::SUBCI(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t n = read(PC++);
+	uint8_t result = A - n - (this->F & 0b00010000), carry_per_bit = A - n - (this->F & 0b00010000);
+
+	this->A = result;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::CP(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t result = this->A - r2, carry_per_bit = this->A - r2;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::CPHL(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t data = read((this->H << 4) + this->L);
+	uint8_t result = A - data, carry_per_bit = A - data;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::CPI(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t n = read(PC++);
+	uint8_t result = A - n, carry_per_bit = A - n;
+
+	this->F = 64;
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
+}
+
+void CPU::INC(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t result = r1 + 1, carry_per_bit = r1 + 1;
+
+	r1 = result;
+
+	this->F = this->F & 16;
+
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+}
+
+void CPU::INCHL(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t data = read((this->H << 4) + this->L);
+
+	uint8_t result = data + 1, carry_per_bit = data + 1;
+
+	write((this->H << 4) + this->L, result);
+
+	this->F = this->F & 16;
+
+	this->F += result == 0 ? 128 : 0;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+}
+
+void CPU::DEC(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t result = r1 - 1, carry_per_bit = r1 - 1;
+
+	r1 = result;
+
+	this->F = this->F & 16;
+
+	this->F += result == 0 ? 128 : 0;
+	this->F += 64;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
+}
+
+void CPU::DECHL(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t data = read((this->H << 4) + this->L);
+	uint8_t result = data - 1, carry_per_bit = data - 1;
+	write((this->H << 4) + this->L, result);
+
+	this->F = this->F & 16;
+
+	this->F += result == 0 ? 128 : 0;
+	this->F += 64;
+	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
 }
 
 void CPU::LDB(uint8_t& r1,uint8_t& r2)
