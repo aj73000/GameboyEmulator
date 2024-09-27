@@ -285,6 +285,50 @@ void CPU::DECHL(uint8_t& r1, uint8_t& r2)
 	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
 }
 
+void CPU::AND(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t  result = 0;
+	if (r2 != NULL)
+	{
+		uint8_t  result = A & r2;
+		A = result;
+	}
+	else
+	{
+		uint8_t data = read((this->H << 4) + this->L);
+		result = A & data;
+		A = result;
+	}
+	this->F = 32;
+	this->F += result == 0 ? 128 : 0;
+}
+
+inline void CPU::ANDI(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t n = read(PC++);
+	uint8_t result = A & n;
+
+	this->F = 32;
+	this->F += result == 0 ? 128 : 0;
+}
+
+void CPU::OR(uint8_t& r1, uint8_t& r2)
+{
+	uint8_t result = 0;
+	if (r2 != NULL)
+	{
+		result = A | r2;
+	}
+	else
+	{
+		uint8_t data = read((this->H<<4) + this->L);
+		result = A | data;
+	}
+	A = result;
+	this->F = 0;
+	this->F += result == 0 ? 128 : 0;
+}
+
 void CPU::LDB(uint8_t& r1,uint8_t& r2)
 {
 	this->B = read(PC++);
