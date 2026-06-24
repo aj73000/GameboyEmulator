@@ -1,530 +1,208 @@
 #include "CPU.h"
 
-
-CPU::CPU(){};
-
-uint8_t CPU::read(uint16_t&& address)
+//=========================
+// CONSTRUCTOR
+//========================
+CPU::CPU()
 {
-	assert(address < bus->ram.size());
-	std::cout << address << std::endl;
-	return bus->read(address);
-};
+    lookuptable.resize(256);
 
-void CPU::write(uint16_t&& addr, uint8_t& data)
-{
-	bus->write(addr, data);
+    lookuptable[0x06] = { "LD B,d8", &CPU::LD8, OperandType::B, OperandType::NONE , 8 };
+
 }
 
+//=========================
+// Read Operand
+//========================
+uint8_t CPU::readOperand(OperandType op)
+{
+    switch (op)
+    {
+    case OperandType::A: return A;
+    case OperandType::B: return B;
+    case OperandType::C: return C;
+    case OperandType::D: return D;
+    case OperandType::E: return E;
+    case OperandType::H: return H;
+    case OperandType::L: return L;
+
+    case OperandType::HL_MEM:
+        return read8(HL());
+
+    case OperandType::BC_MEM:
+        return read8(BC());
+
+    case OperandType::DE_MEM:
+        return read8(DE());
+
+    case OperandType::NONE:
+        throw std::runtime_error("Tried to read NONE as an operand in readOperand");
+
+    default:
+        throw std::runtime_error("Invalid operand");
+    }
+}
+
+//========================
+// Write Operand
+//========================
+void CPU::writeOperand8(OperandType op, uint8_t value)
+{
+    switch (op)
+    {
+    case OperandType::A: A = value; break;
+    case OperandType::B: B = value; break;
+    case OperandType::C: C = value; break;
+    case OperandType::D: D = value; break;
+    case OperandType::E: E = value; break;
+    case OperandType::H: H = value; break;
+    case OperandType::L: L = value; break;
+
+    case OperandType::HL_MEM:
+        write8(HL(), value);
+        break;
+
+    case OperandType::BC_MEM:
+        write8(BC(), value);
+        break;
+
+    case OperandType::DE_MEM:
+        write8(DE(), value);
+        break;
+
+    default:
+        break;
+    }
+}
+
+void CPU::writeOperand16(OperandType op, uint16_t value)
+{
+    switch (op)
+    {
+    case OperandType::HL:
+        setHL(value);
+        break;
+
+    case OperandType::BC:
+        setBC(value);
+        break;
+
+    case OperandType::DE:
+        setDE(value);
+        break;
+
+    default:
+        // Not ideal and will truncate if called
+        writeOperand8(op, static_cast<uint8_t>(value));
+        std::cout << "Truncation under writeOperand16\n";
+        break;
+    }
+}
+
+//=========================
+// DECODE LOOP
+//========================
 void CPU::decode()
 {
-	
-	if (cycles == 0)
-	{
-		std::cout << "Address: ";
-		this->opcode = read(PC++);
+    if (cycles == 0)
+    {
+        opcode = fetch8();
 
-		std::cout << "opcode: " << (long)this->opcode << std::endl;
+        auto& ins = lookuptable[opcode];
 
-		//This will be Data:"Blank" if no data is fetched else data location will show i.e Data: "Location"
-		std::cout << "DataLocation: ";
+        if (!ins.opcode)
+            return;
 
-		// Use opcode on table
-		(this->*(*lookuptable)[opcode].opcode)(*(*lookuptable)[opcode].value1, *(*lookuptable)[opcode].value2);
+        (this->*ins.opcode)(ins.dst, ins.scr);
 
-		cycles = (*lookuptable)[opcode].numCycles;
-	}
-	std::cout<< "Cycles: " << cycles << "\n";
-	cycles--;
+        cycles = ins.cycles;
+    }
+    cycles--;
 }
 
-void CPU::reset()
+//=========================
+// LOAD
+//========================
+void CPU::LD8(OperandType dst, OperandType scr)
 {
-
-}
-
-void CPU::ADD(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = r1 + r2, carry_per_bit = r1 + r2;
-	r1 = result;
-
-	this->F = 0;
-
-	this->F += result == 0 ? 128 : 0;
-
-	// if (carry_per_bit[3] then set H(ie add 32))
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::ADDHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-	uint8_t result = r1 + data, carry_per_bit = r1 + data;
-
-	r1 = result;
-
-	this->F = 0;
-
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-
-}
-void CPU::ADDI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	uint8_t result = r1 + n, carry_per_bit = r1 + n;
-
-	r1 = result;
-
-	this->F = 0;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::ADC(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = this->A + r2 + (this->F & 0b00010000) , carry_per_bit = this->A + r2 + (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 0;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 4) & 1 ? 32 : 0;
-	this->F += carry_per_bit & 1 ? 16 : 0;
-}
-
-void CPU::ADCHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-
-	uint8_t result = this->A + data + (this->F & 0b00010000), carry_per_bit = this->A + data + (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 0;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::ADCI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-
-	uint8_t result = this->A + n + (this->F & 0b00010000), carry_per_bit = this->A + n + (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 0;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::SUB(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = this->A - r2, carry_per_bit = this->A - r2;
-
-	this->A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-
-}
-
-void CPU::SUBHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-	uint8_t result = this->A - data, carry_per_bit = this->A - data;
-
-	this->A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::SUBI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t  n = read(PC++);
-	uint8_t result = this->A - n, carry_per_bit = this->A - n;
-
-	A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::SUBC(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = this->A - r2 - (this->F & 0b00010000), carry_per_bit = this->A - r2 - (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::SUBCHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-
-	uint8_t result = this->A - data - (this->F & 0b00010000), carry_per_bit = this->A - data - (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::SUBCI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	uint8_t result = A - n - (this->F & 0b00010000), carry_per_bit = A - n - (this->F & 0b00010000);
-
-	this->A = result;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::CP(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = this->A - r2, carry_per_bit = this->A - r2;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::CPHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-	uint8_t result = A - data, carry_per_bit = A - data;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::CPI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	uint8_t result = A - n, carry_per_bit = A - n;
-
-	this->F = 64;
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::INC(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = r1 + 1, carry_per_bit = r1 + 1;
-
-	r1 = result;
-
-	this->F = this->F & 16;
-
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-}
-
-void CPU::INCHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-
-	uint8_t result = data + 1, carry_per_bit = data + 1;
-
-	write((this->H << 4) + this->L, result);
-
-	this->F = this->F & 16;
-
-	this->F += result == 0 ? 128 : 0;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-}
-
-void CPU::DEC(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = r1 - 1, carry_per_bit = r1 - 1;
-
-	r1 = result;
-
-	this->F = this->F & 16;
-
-	this->F += result == 0 ? 128 : 0;
-	this->F += 64;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-}
-
-void CPU::DECHL(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t data = read((this->H << 4) + this->L);
-	uint8_t result = data - 1, carry_per_bit = data - 1;
-	write((this->H << 4) + this->L, result);
-
-	this->F = this->F & 16;
-
-	this->F += result == 0 ? 128 : 0;
-	this->F += 64;
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-}
-
-void CPU::AND(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t  result = 0;
-	if (r2 != NULL)
-	{
-		uint8_t  result = A & r2;
-		A = result;
-	}
-	else
-	{
-		uint8_t data = read((this->H << 4) + this->L);
-		result = A & data;
-		A = result;
-	}
-	this->F = 32;
-	this->F += result == 0 ? 128 : 0;
-}
-
-inline void CPU::ANDI(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	uint8_t result = A & n;
-
-	this->F = 32;
-	this->F += result == 0 ? 128 : 0;
-}
-
-void CPU::OR(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t result = 0;
-	if (r2 != NULL)
-	{
-		result = A | r2;
-	}
-	else
-	{
-		uint8_t data = read((this->H<<4) + this->L);
-		result = A | data;
-	}
-	A = result;
-	this->F = 0;
-	this->F += result == 0 ? 128 : 0;
-}
-
-void CPU::LDB(uint8_t& r1,uint8_t& r2)
-{
-	this->B = read(PC++);
+    uint8_t value = 0;
+    if (scr == OperandType::NONE)
+        value = fetch8();
+    else
+        value = readOperand(scr);
+
+    writeOperand8(dst, value);
+
+    //Debug
+    std::cout << "LD8: Location: " << OpToString(dst) << " Value: " << readOperand(dst) << "\n";
 };
 
-void CPU::LDC(uint8_t& r1, uint8_t& r2)
+void CPU::LD16(OperandType dst, OperandType scr)
 {
-	this->C = read(PC++);
+    uint16_t value = 0;
+    if (scr == OperandType::NONE)
+    {
+        // LD rr, nn: Load 16-bit register / register pair
+        value = fetch16();
+        writeOperand16(dst, value);
+        return;
+    }
+    else if (dst == OperandType::NONE && scr == OperandType::SP)
+    {
+        //Do LD (nn), SP: Load from stack pointer (direct)
+
+
+        return;
+    }
+    else if (dst == OperandType::SP && scr == OperandType::HL)
+    {
+        //LD SP, HL: Load stack pointer from HL
+
+
+        return;
+    }
+    else if (dst == OperandType::HL && scr == OperandType::SP)
+    {
+        //LD HL, SP+e: Load HL from adjusted stack pointer
+
+
+        return;
+    }
+    throw std::runtime_error("Invalid use of LD16 (scr should be NONE)\n");
 };
 
-void CPU::LDD(uint8_t& r1, uint8_t& r2)
+void CPU::LDAA16(OperandType dst, const OperandType scr = OperandType::NONE)
 {
-	this->D = read(PC++);
+    // if dst is A then we are storing the 16 bit immediate address in A 
+    // else its the value of A in the address of the location given by the 16 bit address
+    uint16_t addr = fetch16();
+    dst == OperandType::A ? writeOperand8(OperandType::A, read8(addr)) : write8(addr, readOperand(OperandType::A));
 };
 
-void CPU::LDE(uint8_t& r1, uint8_t& r2)
+
+void CPU::LDAC(OperandType dst, OperandType scr)
 {
-	this->E = read(PC++);
+    uint16_t addr = 0xFF00 + C;
+    dst == OperandType::A ? writeOperand8(OperandType::A, read8(addr)) : write8(addr, readOperand(OperandType::A));
 };
 
-void CPU::LDH(uint8_t& r1, uint8_t& r2)
+void CPU::LDAn(OperandType dst, OperandType scr)
 {
-	this->H = read(PC++);
+    uint16_t addr = 0xFF00 + fetch8();
+    dst == OperandType::A ? writeOperand8(OperandType::A, read8(addr)) : write8(addr, readOperand(OperandType::A));
 };
 
-void CPU::LDL(uint8_t& r1 , uint8_t& r2)
+
+void CPU::LDHL_p(OperandType dst, OperandType scr)
 {
-	this->L = read(PC++);
+    uint16_t addr = HL();
+    dst == OperandType::A ? writeOperand8(OperandType::A, read8(addr)) : write8(addr, readOperand(OperandType::A));
+    writeOperand16(OperandType::HL, addr + 1);
 };
 
-void CPU::LOAD(uint8_t& r1, uint8_t& r2)
+void CPU::LDHL_m(OperandType dst, OperandType scr)
 {
-	r1 = r2;
+    uint16_t addr = HL();
+    dst == OperandType::A ? writeOperand8(OperandType::A, read8(addr)) : write8(addr, readOperand(OperandType::A));
+    writeOperand16(OperandType::HL, addr - 1);
 };
-
-void CPU::LOAD16B(uint8_t& r1, uint8_t& r2)
-{
-	if (&r2 == &this->H)
-		r1 = read((this->H << 4) + this->L);
-	if (&r2 == &this->B)
-		r1 = read((this->B << 4) + this->C);
-	if (&r2 == &this->D)
-		r1 = read((this->D << 4) + this->E);
-}
-
-void CPU::LOADHLMIN(uint8_t& r1, uint8_t& r2)
-{
-	LOADIN16B(r1, r2);
-	uint16_t value = (this->H << 8) + this->L;
-	value--;
-	this->L = value & 0x00FF;
-	this->H = value & 0xFF00;
-}
-
-void CPU::LOADHLADD(uint8_t& r1, uint8_t& r2)
-{
-	LOADIN16B(r1, r2);
-	uint16_t value = (this->H << 8) + this->L;
-	value++;
-	this->L = value & 0x00FF;
-	this->H = value & 0xFF00;
-}
-
-void CPU::LOADAHLMIN(uint8_t& r1, uint8_t& r2)
-{
-	LOAD16B(r1, r2);
-	uint16_t value = (this->H << 8) + this->L;
-	value--;
-	this->L = value & 0x00FF;
-	this->H = value & 0xFF00;
-}
-
-void CPU::LOADAHLADD(uint8_t& r1, uint8_t& r2)
-{
-	LOAD16B(r1, r2);
-	uint16_t value = (this->H << 8) + this->L;
-	value++;
-	this->L = value & 0x00FF;
-	this->H = value & 0xFF00;
-}
-
-void CPU::LOADSP16B(uint8_t& r1, uint8_t& r2)
-{
-	if (&r2 == &this->H)
-		this->SP = (this->H << 4) + this->L;
-	if (&r2 == &this->B)
-		this->SP = (this->B << 4) + this->C;
-	if (&r2 == &this->D)
-		this->SP = (this->D << 4) + this->E;
-}
-
-void CPU::LOADIN16B(uint8_t& r1, uint8_t& r2)
-{
-	if (&r1 == &this->H)
-		write((this->H << 4) + this->L, r2);
-	if (&r1 == &this->B)
-		write((this->B << 4) + this->C, r2);
-	if (&r1 == &this->D)
-		write((this->D << 4) + this->E, r2);
-}
-
-void CPU::LOADACFF00(uint8_t& r1, uint8_t& r2)
-{
-	r1 = read(0xFF00 + this->C);
-}
-
-void CPU::LOADCFF00A(uint8_t& r1, uint8_t& r2)
-{
-	write(0xFF00 + this->C, r2);
-}
-
-void CPU::LOADnA(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	write(0xFF00 + n, r2);
-}
-
-void CPU::LOADAn(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t n = read(PC++);
-	this->A = read(0xFF00 + n);
-}
-
-void CPU::LOADIN16BRnn(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t nn_lsb = read(PC++);
-	uint8_t nn_msb = read(PC++);
-
-	if (&r1 == &this->H)
-	{
-		this->H = nn_msb;
-		this->L = nn_lsb;
-	}
-	if (&r1 == &this->B)
-	{
-		this->B = nn_msb;
-		this->C = nn_lsb;
-	}
-	if (&r1 == &this->D)
-	{
-		this->D = nn_msb;
-		this->E = nn_lsb;
-	}
-	if (r1 == NULL)
-	{
-		this->SP = (nn_msb << 8) + nn_lsb;
-	}
-}
-
-void CPU::LOADHLSPE(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t e = read(PC++);
-	uint16_t result = this->SP + e, carry_per_bit = this->SP + e;
-
-	this->H = result & 0xFF00;
-	this->L = result & 0xFF;
-
-	this->F = 0;
-
-	// if (carry_per_bit[3] then set H(ie add 32))
-	this->F += (carry_per_bit >> 3) & 1 ? 32 : 0;
-	this->F += (carry_per_bit >> 7) & 1 ? 16 : 0;
-}
-
-void CPU::LOADnnA(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t nn_lsb = read(PC++);
-	uint8_t nn_msb = read(PC++);
-	write((nn_msb << 8) + nn_lsb, r2);
-}
-
-void CPU::LOADnnSP(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t nn_lsb = read(PC++);
-	uint8_t nn_msb = read(PC++);
-
-	uint8_t v1 = this->SP & 0x00FF;
-	uint8_t v2 = (this->SP & 0xFF00) >> 4;
-
-	write((nn_msb << 4) + nn_lsb, v1);
-	write((nn_msb << 4) + nn_lsb + 1, v2);
-}
-
-void CPU::PushSPrr(uint8_t& r1, uint8_t& r2)
-{
-	this->SP--;
-	write(static_cast<uint16_t&&>(this->SP),r1);
-	this->SP--;
-	write(static_cast<uint16_t&&>(this->SP), r2);
-
-}
-
-void CPU::PoprrSP(uint8_t& r1, uint8_t& r2)
-{
-	uint8_t nn_lsb = read(SP++);
-	uint8_t nn_msb = read(SP++);
-	r1 = nn_msb;
-	r2 = nn_lsb;
-}
